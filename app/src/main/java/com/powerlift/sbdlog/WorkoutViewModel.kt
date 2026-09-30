@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 class WorkoutViewModel(private val dao: WorkoutLogDao) : ViewModel() {
@@ -21,18 +22,20 @@ class WorkoutViewModel(private val dao: WorkoutLogDao) : ViewModel() {
     val logs: StateFlow<List<WorkoutLog>> = dao.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val topSets: StateFlow<Map<Exercise, WorkoutLog?>> = logs
-        .let { flow ->
-            kotlinx.coroutines.flow.combine(
-                listOf(
-                    Exercise.SQUAT, Exercise.BENCH, Exercise.DEADLIFT
-                ).map { ex ->
-                    flow.map { list -> ex to list.filter { it.exercise == ex }
-                        .maxWithOrNull(compareBy({ it.weightKg }, { it.reps })) }
-                }
-            ) { arr -> arr.toMap() }
-                .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
-        }
+    val topSets: StateFlow<Map<Exercise, WorkoutLog?>> = combine(
+        logs,
+        logs,
+        logs
+    ) { squatList, benchList, deadliftList ->
+        mapOf(
+            Exercise.SQUAT to squatList.filter { it.exercise == Exercise.SQUAT }
+                .maxWithOrNull(compareBy({ it.weightKg }, { it.reps })),
+            Exercise.BENCH to benchList.filter { it.exercise == Exercise.BENCH }
+                .maxWithOrNull(compareBy({ it.weightKg }, { it.reps })),
+            Exercise.DEADLIFT to deadliftList.filter { it.exercise == Exercise.DEADLIFT }
+                .maxWithOrNull(compareBy({ it.weightKg }, { it.reps }))
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     fun selectExercise(exercise: Exercise) {
         _selectedExercise.value = exercise
